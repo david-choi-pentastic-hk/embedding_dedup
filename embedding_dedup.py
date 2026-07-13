@@ -29,89 +29,124 @@ then save the resultant dataframe as an MS excel file.
 import pandas as pd
 import numpy as np
 import ollama
+from typing import Callable, Any
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import pdist, squareform
 
-# 1. Load the dataset
-input_file = ".sample/input.csv"
-try:
-    df = pd.read_csv(input_file)
-except FileNotFoundError:
-    # Creating a dummy dataframe for demonstration if the file doesn't exist
-    print(f"'{input_file}' not found. Creating a dummy DataFrame for demonstration.")
-    data = {
-        "Name": ["John Doe", "John Doe", "Jon Doe", "Jane Smith", "Jane S."],
-        "City": ["New York", "NYC", "New York", "London", "London"],
-        "Job": ["Engineer", "Software Engineer", "Developer", "Doctor", "Surgeon"]
-    }
-    df = pd.DataFrame(data)
+COMPARED_COLUMN_NAME: str = "Name"
+COMPARED_COLUMN_EMBEDDING_NAME: str = f"{COMPARED_COLUMN_NAME}_embedding"
 
-print("Original DataFrame:")
-print(df, "\n")
+CLUSTER_ID_COLUMN_NAME: str = "Cluster_ID"
+
+COMPARED_COLUMN_STRJOIN_SEPARATOR: str = " / "
+OTHER_COLUMNS_STRJOIN_SEPARATOR: str = ", "
+
+SIMILARITY_THRESHOLD = 0.80
+DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD
+
+# 1. Load the dataset
+def import_csv_as_df(csv_filepath: str) -> pd.DataFrame:
+    # Force "Risk" column to be a string, so it does not convert Risk: "None" to null.
+    df = pd.read_csv(csv_filepath, converters={"Risk": str})
+    return df
 
 # 2. Merge rows with identical "Name" and store other column values as sets
 # We group by 'Name' and aggregate every other column into a set of unique strings
-agg_dict = {col: lambda x: set(x.dropna().astype(str)) for col in df.columns if col != "Name"}
-df_merged = df.groupby("Name", as_index=False).agg(agg_dict)
-
-print("DataFrame after merging identical names:")
-print(df_merged, "\n")
+def merge_rows_with_same_field(df: pd.DataFrame) -> pd.DataFrame:
+    agg_dict = {col: lambda x: set(x.dropna().astype(str)) for col in df.columns if col != COMPARED_COLUMN_NAME}
+    df_merged = df.groupby(COMPARED_COLUMN_NAME, as_index=False).agg(agg_dict)
+    return df_merged
 
 # 3. Generate embeddings using Ollama
-EMBED_MODEL = "nomic-embed-text" # You can change this to your preferred embedding model
-
-def get_ollama_embedding(text):
-    try:
+# A new column is created to store the embeddings of each name.
+def add_embeddings(df: pd.DataFrame) -> pd.DataFrame:
+    def get_embedding(text: str) -> list[float]:
+        EMBED_MODEL = "nomic-embed-text" # You can change this to your preferred embedding model
         response = ollama.embeddings(model=EMBED_MODEL, prompt=text)
         return response["embedding"]
-    except Exception as e:
-        print(f"Error generating embedding for '{text}': {e}")
-        # Return a zero vector fallback depending on model dimensions (e.g., 768 for nomic)
-        return []
 
-print(f"Generating embeddings using Ollama model '{EMBED_MODEL}'...")
-df_merged["Name_embedding"] = df_merged["Name"].apply(get_ollama_embedding)
-
-# Convert embedding column to a 2D numpy array for distance calculations
-embeddings_matrix = np.array(df_merged["Name_embedding"].tolist())
+    df[COMPARED_COLUMN_EMBEDDING_NAME] = df[COMPARED_COLUMN_NAME].apply(get_embedding)
+    return df
 
 # 4 & 5. Perform Cosine Similarity & Hierarchical Clustering (Complete Linkage)
 # Cosine distance = 1 - Cosine Similarity. 
 # A similarity threshold > 0.80 means a distance threshold < 0.20.
-similarity_threshold = 0.80
-distance_threshold = 1.0 - similarity_threshold
+# A new column is created to label the cluster each row belongs to.
+def add_cluster_labels(df: pd.DataFrame) -> pd.DataFrame:
+    # Convert embedding column to a 2D numpy array for distance calculations
+    embeddings_matrix = np.array(df[COMPARED_COLUMN_EMBEDDING_NAME].tolist())
 
-print("Calculating cosine similarities and clustering closely related names...")
-# 'pdist' computes pairwise distances efficiently. 'cosine' metric is used.
-pairwise_distances = pdist(embeddings_matrix, metric="cosine")
+    # Calculate cosine similarities and clustering closely related names
+    # 'pdist' computes pairwise distances efficiently. 'cosine' metric is used.
+    pairwise_distances = pdist(embeddings_matrix, metric="cosine")
 
-# Complete linkage clustering
-Z = linkage(pairwise_distances, method="complete")
+    # Complete linkage clustering
+    Z = linkage(pairwise_distances, method="complete")
 
-# Form flat clusters based on our distance threshold
-df_merged["Cluster_ID"] = fcluster(Z, t=distance_threshold, criterion="distance")
+    # Form flat clusters based on our distance threshold
+    df[CLUSTER_ID_COLUMN_NAME] = fcluster(Z, t=DISTANCE_THRESHOLD, criterion="distance")
+
+    return df
 
 # 6. Merge rows belonging to the same cluster
 # Define how to aggregate columns when merging clusters
-final_agg = {"Name": lambda x: " / ".join(sorted(list(set(x))))} # Combine names in the cluster
-for col in df_merged.columns:
-    if col not in ["Name", "Name_embedding", "Cluster_ID"]:
-        # Union the existing sets together
-        final_agg[col] = lambda x: set().union(*x)
+def merge_clusters(df: pd.DataFrame) -> pd.DataFrame:
+    final_agg: dict[str, Callable[[Any], set[Any] | str]] = {
+        COMPARED_COLUMN_NAME: lambda x: COMPARED_COLUMN_STRJOIN_SEPARATOR.join(sorted(list(set(x))))
+    } # Combine names in the cluster
+    for col in df.columns:
+        if col not in [COMPARED_COLUMN_NAME, COMPARED_COLUMN_EMBEDDING_NAME, CLUSTER_ID_COLUMN_NAME]:
+            # Union the existing sets together
+            final_agg[col] = lambda x: set().union(*x)
 
-# Group by the Cluster_ID to finalize the hierarchical merge
-df_final = df_merged.groupby("Cluster_ID").agg(final_agg).reset_index(drop=True)
+    # Group by the Cluster_ID to finalize the hierarchical merge
+    df = df.groupby(CLUSTER_ID_COLUMN_NAME).agg(final_agg).reset_index(drop=True)
 
-print("Final Clustered and Merged DataFrame:")
-print(df_final, "\n")
+    return df
+
+# We convert sets to strings so they look clean in Excel
+def reduce_sets(df: pd.DataFrame) -> pd.DataFrame:
+    df_excel = df.copy()
+    for col in df_excel.columns:
+        if col != COMPARED_COLUMN_NAME:
+            df_excel[col] = df_excel[col].apply(lambda s: OTHER_COLUMNS_STRJOIN_SEPARATOR.join(list(s)))
+    return df_excel
 
 # 7. Save the resultant dataframe to an MS Excel file
-output_file = ".sample/output.xlsx"
-# We convert sets to strings so they look clean in Excel
-df_excel = df_final.copy()
-for col in df_excel.columns:
-    if col != "Name":
-        df_excel[col] = df_excel[col].apply(lambda s: ", ".join(list(s)))
+def save_df_to_excel(df: pd.DataFrame, excel_filepath: str) -> None:
+    df.to_excel(excel_filepath, index=False)
 
-df_excel.to_excel(output_file, index=False)
-print(f"Successfully saved final results to {output_file}")
+def merge_df_rows_by_embeddings(df: pd.DataFrame) -> pd.DataFrame:
+    print("Processing...")
+
+    df = merge_rows_with_same_field(df)
+    print("Rows with same names are merged.")
+
+    df = add_embeddings(df)
+    print("Embeddings are created.")
+
+    df = add_cluster_labels(df)
+    print("Clusters are identified.")
+
+    df = merge_clusters(df)
+    print("Clusters are merged.")
+
+    df = reduce_sets(df)
+    print("Sets are reduced.")
+
+    return df
+
+def merge_csv_rows_by_embeddings(input_csv_filepath: str, output_xlsx_filepath: str) -> None:
+    df: pd.DataFrame = import_csv_as_df(input_csv_filepath)
+    df = merge_df_rows_by_embeddings(df)
+    save_df_to_excel(df, output_xlsx_filepath)
+
+def main() -> None:
+    input_file = ".sample/input.csv"
+    output_file = ".sample/output.xlsx"
+
+    merge_csv_rows_by_embeddings(input_file, output_file)
+    print(f"Successfully saved final results to {output_file}")
+
+if __name__ == "__main__":
+    main()
