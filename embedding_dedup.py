@@ -26,6 +26,7 @@ then merge all rows that have similarity greater than 0.80 with complete linkage
 then save the resultant dataframe as an MS excel file.
 """
 
+import argparse
 import pandas as pd
 import numpy as np
 import ollama
@@ -43,6 +44,8 @@ OTHER_COLUMNS_STRJOIN_SEPARATOR: str = ", "
 
 SIMILARITY_THRESHOLD = 0.80
 DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD
+
+EXCEL_FILE_EXTENSION = ".xlsx"
 
 # 1. Load the dataset
 def import_csv_as_df(csv_filepath: str) -> pd.DataFrame:
@@ -141,12 +144,28 @@ def merge_csv_rows_by_embeddings(input_csv_filepath: str, output_xlsx_filepath: 
     df = merge_df_rows_by_embeddings(df)
     save_df_to_excel(df, output_xlsx_filepath)
 
-def main() -> None:
-    input_file = ".sample/input.csv"
-    output_file = ".sample/output.xlsx"
+def create_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+                    prog="Embedding Dedup",
+                    description="Removes duplicated rows by grouping similar findings.",
+                    epilog="Copyright (c) 2026 Pentastic Security Limited")
 
-    merge_csv_rows_by_embeddings(input_file, output_file)
-    print(f"Successfully saved final results to {output_file}")
+    parser.add_argument("-i", "--input", required=True, help="The raw CSV file to be processed.")
+    parser.add_argument("-o", "--output", default="output.xlsx", help="The Excel file path to store the result.")
+
+    return parser
+
+def main() -> None:
+    parser = create_parser()
+    args = parser.parse_args()
+
+    input_filepath: str = args.input
+    output_filepath: str = args.output
+    if not output_filepath.endswith(EXCEL_FILE_EXTENSION):
+        output_filepath += EXCEL_FILE_EXTENSION
+
+    merge_csv_rows_by_embeddings(input_filepath, output_filepath)
+    print(f"Successfully saved final results to {output_filepath}")
 
 if __name__ == "__main__":
     main()
