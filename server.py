@@ -27,9 +27,14 @@ def upload_file():
     if not uploaded_csv_file:
         abort(400, "bad request: No file was uploaded.")
 
-    # 2. Extract useful metadata if needed
+    # 2. Reject all non-CSV file uploads to prevent web shells
+    #    I know this program runs on localhost only,
+    #    but who knows if someone will try to hack us
     input_csv_filename = uploaded_csv_file.filename
-    # content_type = uploaded_csv_file.content_type
+    content_type = uploaded_csv_file.content_type
+
+    if not input_csv_filename.endswith(".csv") or content_type != "text/csv":
+        abort(400, "bad request: File uploaded is not a CSV file.")
 
     # 3. Save the file to a specific disk location securely
     input_csv_save_dir = "./input"
@@ -54,8 +59,8 @@ def upload_file():
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-                    prog="Embedding Dedup Server",
-                    description="Removes duplicated rows by grouping similar findings.",
+                    prog="Embedding Dedup Frontend Server",
+                    description="Provides a GUI to access the tool.",
                     epilog="Copyright (c) 2026 Pentastic Security Limited")
 
     parser.add_argument("-p", "--port", default=8080, help="The port to serve the webpage.")
