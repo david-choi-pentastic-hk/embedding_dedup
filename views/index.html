@@ -10,15 +10,94 @@
         <div class="container">
             Embedding Dedup.
             Copyright (c) 2026 Pentastic Security Limited
-            <form action="/" method="POST" enctype="multipart/form-data">
-                <label class="form-label" for="csv-file">Upload the raw CSV file exported from Nessus:</label>
-                <input class="form-control mb-3" type="file" id="csv-file" name="uploaded_file" accept="text/csv">
+            <form enctype="multipart/form-data" id="fileUploadForm">
+                <label class="form-label" for="fileSelector">Upload the raw CSV file exported from Nessus:</label>
+                <input class="form-control mb-3" type="file" id="fileSelector" name="uploaded_file" accept="text/csv">
 
-                <button type="submit" class="btn btn-primary">Upload File</button>
+                <button type="submit" class="btn btn-primary" id="uploadFileButton">
+                    Upload File
+                    <!--
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    <span role="status">Loading...</span>
+                    -->
+                </button>
             </form>
-            Please wait a minute for the server to process your data.
-            The speed depends on the server computation power.
+            <div id="feedbackBox">
+                Please be patient for the server to process your data.
+            </div>
         </div>
+        <script>
+            const form = document.getElementById("fileUploadForm");
+            const feedbackBox = document.getElementById("feedbackBox");
+
+            function setFormSubmitted(isSubmitted) {
+                const button = document.getElementById("uploadFileButton");
+                button.disabled = isSubmitted;
+                button.innerHTML = (isSubmitted) ?
+                    '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span><span role="status">Loading...</span>' :
+                    "Upload File";
+                
+                if (isSubmitted) {
+                    feedbackBox.innerHTML = "Please be patient for the server to process your data.";
+                }
+            }
+
+            async function downloadBlob(blob, filename) {
+                // 1. Read the server response as binary data (Blob)
+
+                // 2. Create a temporary local URL pointing to the binary data
+                const downloadUrl = window.URL.createObjectURL(blob);
+
+                // 3. Create a temporary hidden anchor (<a>) element
+                const downloadLink = document.createElement("a");
+                downloadLink.href = downloadUrl;
+
+                // 4. Specify the exact file name for the downloaded file
+                downloadLink.download = filename;
+
+                // 5. Append link to body, trigger the click, and remove it immediately
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                // 6. Clean up the browser memory allocated for the URL object
+                window.URL.revokeObjectURL(downloadUrl);
+            }
+
+            // 1. Listen for the form submission
+            form.addEventListener("submit", async (event) => {
+                setFormSubmitted(true);
+
+                // 2. Prevent the default browser page reload
+                event.preventDefault(); 
+
+                // 3. Automatically gather the form input values
+                const formData = new FormData(form);
+
+                try {
+                    // 4. Send the request asynchronously to your server endpoint
+                    const response = await fetch("/", {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    // 5. Handle the response data based on the status
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        downloadBlob(blob, "output.xlsx");
+                        feedbackBox.innerHTML = `<p class="text-success">File produced.</p>`;
+                        form.reset(); // Optional: Clear the form inputs
+                    } else {
+                        feedbackBox.innerHTML = `<p class="text-danger">Server Error: ${response.status}</p>`;
+                    }
+                } catch (error) {
+                    // 6. Handle network or unexpected connection errors
+                    feedbackBox.innerHTML = `<p class="text-danger">Network error. Please try again.</p>`;
+                } finally {
+                    setFormSubmitted(false);
+                }
+            });
+        </script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
     </body>
 </html>
