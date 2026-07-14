@@ -18,7 +18,7 @@
                     Upload File
                     <!--
                     <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                    <span role="status">Loading...</span>
+                    <span role="status">Thinking...</span>
                     -->
                 </button>
             </form>
@@ -34,7 +34,7 @@
                 const button = document.getElementById("uploadFileButton");
                 button.disabled = isSubmitted;
                 button.innerHTML = (isSubmitted) ?
-                    '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span><span role="status">Loading...</span>' :
+                    '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span><span role="status">Thinking...</span>' :
                     "Upload File";
                 
                 if (isSubmitted) {
