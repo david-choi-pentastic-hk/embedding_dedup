@@ -40,14 +40,16 @@ def upload_file():
     input_csv_save_dir = "./input"
     os.makedirs(input_csv_save_dir, exist_ok=True)
 
-    input_csv_filepath = os.path.join(input_csv_save_dir, input_csv_filename)
+    epoch_time_str = str(time.time())
+
+    input_csv_filepath = os.path.join(input_csv_save_dir, f"{epoch_time_str}.csv")
     uploaded_csv_file.save(input_csv_filepath, overwrite=True)
 
     output_xlsx_dir = "./output"
     os.makedirs(output_xlsx_dir, exist_ok=True)
 
-    output_xlsx_filename = f"{str(time.time())}.xlsx"
-    output_xlsx_filepath = f"{output_xlsx_dir}/{output_xlsx_filename}"
+    output_xlsx_filename = f"{epoch_time_str}.xlsx"
+    output_xlsx_filepath = os.path.join(output_xlsx_dir, output_xlsx_filename)
 
     # perform the merge
     merge_csv_rows_by_embeddings(input_csv_filepath, output_xlsx_filepath)
