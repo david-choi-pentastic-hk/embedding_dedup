@@ -88,7 +88,7 @@
                         feedbackBox.innerHTML = `<p class="text-success">File produced.</p>`;
                         form.reset(); // Optional: Clear the form inputs
                     } else {
-                        feedbackBox.innerHTML = `<p class="text-danger">Server Error: ${response.status}</p>`;
+                        feedbackBox.innerHTML = `<p class="text-danger">Error: ${response.status} ${response.statusText}</p>`;
                     }
                 } catch (error) {
                     // 6. Handle network or unexpected connection errors
