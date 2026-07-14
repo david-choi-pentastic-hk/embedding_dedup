@@ -284,3 +284,7 @@ $RECYCLE.BIN/
 
 # Sample files
 .sample/
+
+# Server cache files
+input/
+output/
