@@ -30,7 +30,12 @@
         </div>
         <script>
             const form = document.getElementById("fileUploadForm");
+            const fileSelector = document.getElementById("fileSelector");
             const feedbackBox = document.getElementById("feedbackBox");
+
+            function setFeedbackMessage(message, color=undefined) {
+                feedbackBox.innerHTML = color ? `<p class="text-${color}">${message}</p>` : message;
+            }
 
             function setFormSubmitted(isSubmitted) {
                 const button = document.getElementById("uploadFileButton");
@@ -40,7 +45,7 @@
                     "Upload File";
                 
                 if (isSubmitted) {
-                    feedbackBox.innerHTML = "Please be patient for the server to process your data.";
+                    setFeedbackMessage("Please be patient for the server to process your data.");
                 }
             }
 
@@ -68,10 +73,16 @@
 
             // 1. Listen for the form submission
             form.addEventListener("submit", async (event) => {
-                setFormSubmitted(true);
-
                 // 2. Prevent the default browser page reload
                 event.preventDefault(); 
+
+                if (fileSelector.files.length <= 0) {
+                    setFeedbackMessage("Please select a file first.", "danger");
+                    setFormSubmitted(false);
+                    return;
+                }
+
+                setFormSubmitted(true);
 
                 // 3. Automatically gather the form input values
                 const formData = new FormData(form);
@@ -87,14 +98,14 @@
                     if (response.ok) {
                         const blob = await response.blob();
                         downloadBlob(blob, "output.xlsx");
-                        feedbackBox.innerHTML = `<p class="text-success">File produced.</p>`;
+                        setFeedbackMessage("File produced.", "success");
                         form.reset(); // Optional: Clear the form inputs
                     } else {
-                        feedbackBox.innerHTML = `<p class="text-danger">Error: ${response.status} ${response.statusText}</p>`;
+                        setFeedbackMessage(`Error: ${response.status} ${response.statusText}`, "danger");
                     }
                 } catch (error) {
                     // 6. Handle network or unexpected connection errors
-                    feedbackBox.innerHTML = `<p class="text-danger">Network error. Please try again.</p>`;
+                    setFeedbackMessage("Network error. Please try again.", "danger");
                 } finally {
                     setFormSubmitted(false);
                 }
