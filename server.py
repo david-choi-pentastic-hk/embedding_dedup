@@ -23,6 +23,8 @@ def get_webpage():
 def upload_file():
     # 1. Retrieve the file object using the HTML form's field name
     uploaded_csv_file = request.files.get("uploaded_file")
+    similarity_threshold = request.forms.get("similarity_threshold")
+    similarity_threshold = min(max(float(similarity_threshold), -1.0), +1.0)
 
     if not uploaded_csv_file:
         abort(400, "bad request: No file was uploaded.")
