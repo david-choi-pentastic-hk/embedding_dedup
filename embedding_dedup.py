@@ -42,8 +42,7 @@ CLUSTER_ID_COLUMN_NAME: str = "Cluster_ID"
 COMPARED_COLUMN_STRJOIN_SEPARATOR: str = " / "
 OTHER_COLUMNS_STRJOIN_SEPARATOR: str = ", "
 
-SIMILARITY_THRESHOLD = 0.80
-DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD
+DEFAULT_SIMILARITY_THRESHOLD = 0.80
 
 EXCEL_FILE_EXTENSION = ".xlsx"
 
@@ -75,7 +74,7 @@ def add_embeddings(df: pd.DataFrame) -> pd.DataFrame:
 # Cosine distance = 1 - Cosine Similarity. 
 # A similarity threshold > 0.80 means a distance threshold < 0.20.
 # A new column is created to label the cluster each row belongs to.
-def add_cluster_labels(df: pd.DataFrame) -> pd.DataFrame:
+def add_cluster_labels(df: pd.DataFrame, similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD) -> pd.DataFrame:
     # Convert embedding column to a 2D numpy array for distance calculations
     embeddings_matrix = np.array(df[COMPARED_COLUMN_EMBEDDING_NAME].tolist())
 
@@ -86,8 +85,10 @@ def add_cluster_labels(df: pd.DataFrame) -> pd.DataFrame:
     # Complete linkage clustering
     Z = linkage(pairwise_distances, method="complete")
 
+    similarity_threshold = np.clip(similarity_threshold, -1, 1)
+    distance_threshold = 1.0 - similarity_threshold
     # Form flat clusters based on our distance threshold
-    df[CLUSTER_ID_COLUMN_NAME] = fcluster(Z, t=DISTANCE_THRESHOLD, criterion="distance")
+    df[CLUSTER_ID_COLUMN_NAME] = fcluster(Z, t=distance_threshold, criterion="distance")
 
     return df
 
@@ -119,7 +120,7 @@ def reduce_sets(df: pd.DataFrame) -> pd.DataFrame:
 def save_df_to_excel(df: pd.DataFrame, excel_filepath: str) -> None:
     df.to_excel(excel_filepath, index=False)
 
-def merge_df_rows_by_embeddings(df: pd.DataFrame) -> pd.DataFrame:
+def merge_df_rows_by_embeddings(df: pd.DataFrame, similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD) -> pd.DataFrame:
     print("Processing...")
 
     df = merge_rows_with_same_field(df)
@@ -128,7 +129,7 @@ def merge_df_rows_by_embeddings(df: pd.DataFrame) -> pd.DataFrame:
     df = add_embeddings(df)
     print("Embeddings are created.")
 
-    df = add_cluster_labels(df)
+    df = add_cluster_labels(df, similarity_threshold)
     print("Clusters are identified.")
 
     df = merge_clusters(df)
@@ -139,9 +140,9 @@ def merge_df_rows_by_embeddings(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-def merge_csv_rows_by_embeddings(input_csv_filepath: str, output_xlsx_filepath: str) -> None:
+def merge_csv_rows_by_embeddings(input_csv_filepath: str, output_xlsx_filepath: str, *, similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD) -> None:
     df: pd.DataFrame = import_csv_as_df(input_csv_filepath)
-    df = merge_df_rows_by_embeddings(df)
+    df = merge_df_rows_by_embeddings(df, similarity_threshold)
     save_df_to_excel(df, output_xlsx_filepath)
 
 def create_parser() -> argparse.ArgumentParser:
@@ -152,6 +153,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("-i", "--input", required=True, help="The raw CSV file to be processed.")
     parser.add_argument("-o", "--output", default="output.xlsx", help="The Excel file path to store the result.")
+    parser.add_argument("-t", "--threshold", default=DEFAULT_SIMILARITY_THRESHOLD, help="The cosine similarity threshold [-1 : +1]. Larger means stricter.")
 
     return parser
 
@@ -163,8 +165,9 @@ def main() -> None:
     output_filepath: str = args.output
     if not output_filepath.endswith(EXCEL_FILE_EXTENSION):
         output_filepath += EXCEL_FILE_EXTENSION
+    similarity_threshold: float = float(args.threshold)
 
-    merge_csv_rows_by_embeddings(input_filepath, output_filepath)
+    merge_csv_rows_by_embeddings(input_filepath, output_filepath, similarity_threshold=similarity_threshold)
     print(f"Successfully saved final results to {output_filepath}")
 
 if __name__ == "__main__":
